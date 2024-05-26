@@ -1,17 +1,5 @@
 ﻿#include "Graphic.h"
 
-// アサート
-static void Assert(bool result, const char* file, size_t line, const char* message) {
-	if (result) {
-		stringstream stream;
-		stream << "File : " << file << endl;
-		stream << "Line : " << line << endl;
-		stream << system_category().message(result) << endl;
-		stream << message << endl;
-		throw exception(stream.str().c_str());
-	}
-}
-
 // ウィンドウプロシージャ
 static LRESULT WindowProc(HWND hWindow, UINT msg, WPARAM wParam, LPARAM lParam) {
 	if (msg == WM_DESTROY) { PostQuitMessage(0); }
@@ -23,8 +11,8 @@ unique_ptr<Graphic> Graphic::m_Instance = nullptr;
 
 // コンストラクタ
 Graphic::Graphic(LPCWCHAR className, LPCWCHAR windowName, uint32_t windowWidth, uint32_t windowHeight):
-	m_Hexahedron(make_unique<Hexahedron>()),
-	m_Octahedron(make_unique<Octahedron>()),
+	m_Octahedron1(make_unique<Octahedron>()),
+	m_Octahedron2(make_unique<Octahedron>()),
 	m_InstanceHandle(nullptr),
 	m_WindowHandle(nullptr),
 	m_ClassName(className),
@@ -63,8 +51,6 @@ Graphic::Graphic(LPCWCHAR className, LPCWCHAR windowName, uint32_t windowWidth, 
 		m_HandleRTV[i] = { 0 };
 		m_FenceCounter[i] = 0;
 	}
-
-	m_Octahedron->Translate(XMFLOAT3(1.0f, 0.0f, 0.0f));
 }
 
 // ウィンドウを作成
@@ -273,89 +259,7 @@ bool Graphic::BeforeRendering() {
 	HRESULT result;
 
 	try {
-		// 頂点バッファ
-		{
-			D3D12_HEAP_PROPERTIES prop = {};
-			prop.Type = D3D12_HEAP_TYPE_UPLOAD;
-			prop.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
-			prop.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
-			prop.CreationNodeMask = 1;
-			prop.VisibleNodeMask = 1;
-
-			D3D12_RESOURCE_DESC desc = {};
-			desc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
-			desc.Alignment = 0;
-			desc.Width = m_Octahedron->GetVertexNum() * sizeof(VERTEX);
-			desc.Height = 1;
-			desc.DepthOrArraySize = 1;
-			desc.MipLevels = 1;
-			desc.Format = DXGI_FORMAT_UNKNOWN;
-			desc.SampleDesc.Count = 1;
-			desc.SampleDesc.Quality = 0;
-			desc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
-			desc.Flags = D3D12_RESOURCE_FLAG_NONE;
-
-			ID3D12Resource* vertexBuffer = nullptr;
-			result = m_Device->CreateCommittedResource(&prop, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&vertexBuffer));
-			Assert(FAILED(result), __FILE__, __LINE__, system_category().message(result).c_str());
-			m_VertexBuffer.reset(vertexBuffer);
-
-			void* data = nullptr;
-			result = m_VertexBuffer->Map(0, nullptr, &data);
-			Assert(FAILED(result), __FILE__, __LINE__, system_category().message(result).c_str());
-
-			memcpy(data, m_Octahedron->GetVertices(), m_Octahedron->GetVertexNum() * sizeof(VERTEX));
-
-			m_VertexBuffer->Unmap(0, nullptr);
-
-			m_VertexBufferView.BufferLocation = m_VertexBuffer->GetGPUVirtualAddress();
-			m_VertexBufferView.SizeInBytes = static_cast<UINT>(m_Octahedron->GetVertexNum() * sizeof(VERTEX));
-			m_VertexBufferView.StrideInBytes = static_cast<UINT>(sizeof(VERTEX));
-		}
-
-		// インデックスバッファ
-		{
-			uint32_t indices[] = { 0, 1, 2, 0, 2, 3 };
-
-			D3D12_HEAP_PROPERTIES prop = {};
-			prop.Type = D3D12_HEAP_TYPE_UPLOAD;
-			prop.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
-			prop.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
-			prop.CreationNodeMask = 1;
-			prop.VisibleNodeMask = 1;
-
-			D3D12_RESOURCE_DESC desc = {};
-			desc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
-			desc.Alignment = 0;
-			desc.Width = m_Octahedron->GetIndexNum() * sizeof(uint32_t);
-			desc.Height = 1;
-			desc.DepthOrArraySize = 1;
-			desc.MipLevels = 1;
-			desc.Format = DXGI_FORMAT_UNKNOWN;
-			desc.SampleDesc.Count = 1;
-			desc.SampleDesc.Quality = 0;
-			desc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
-			desc.Flags = D3D12_RESOURCE_FLAG_NONE;
-
-			ID3D12Resource* buffer = nullptr;
-			result = m_Device->CreateCommittedResource(&prop, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&buffer));
-			Assert(FAILED(result), __FILE__, __LINE__, system_category().message(result).c_str());
-			m_IndexBuffer.reset(buffer);
-
-			void* ptr = nullptr;
-			result = m_IndexBuffer->Map(0, nullptr, &ptr);
-			Assert(FAILED(result), __FILE__, __LINE__, system_category().message(result).c_str());
-
-			memcpy(ptr, m_Octahedron->GetIndices(), m_Octahedron->GetIndexNum() * sizeof(uint32_t));
-
-			m_IndexBuffer->Unmap(0, nullptr);
-
-			m_IndexBufferView.BufferLocation = m_IndexBuffer->GetGPUVirtualAddress();
-			m_IndexBufferView.Format = DXGI_FORMAT_R32_UINT;
-			m_IndexBufferView.SizeInBytes = m_Octahedron->GetIndexNum() * sizeof(uint32_t);
-		}
-
-		// 定数バッファ
+		// 定数バッファ用のディスクリプタヒープ
 		{
 			D3D12_DESCRIPTOR_HEAP_DESC heapDesc = {};
 			heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
@@ -367,64 +271,6 @@ bool Graphic::BeforeRendering() {
 			result = m_Device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&heap));
 			Assert(FAILED(result), __FILE__, __LINE__, system_category().message(result).c_str());
 			m_HeapCBV.reset(heap);
-
-			D3D12_HEAP_PROPERTIES prop = {};
-			prop.Type = D3D12_HEAP_TYPE_UPLOAD;
-			prop.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
-			prop.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
-			prop.CreationNodeMask = 1;
-			prop.VisibleNodeMask = 1;
-
-			D3D12_RESOURCE_DESC bufferDesc = {};
-			bufferDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
-			bufferDesc.Alignment = 0;
-			bufferDesc.Width = sizeof(TRANSFORM);
-			bufferDesc.Height = 1;
-			bufferDesc.DepthOrArraySize = 1;
-			bufferDesc.MipLevels = 1;
-			bufferDesc.Format = DXGI_FORMAT_UNKNOWN;
-			bufferDesc.SampleDesc.Count = 1;
-			bufferDesc.SampleDesc.Quality = 0;
-			bufferDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
-			bufferDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
-
-			UINT incrSize = m_Device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-
-			for (int i = 0; i < m_FrameCount; ++i) {
-
-				ID3D12Resource* buffer = nullptr;
-				result = m_Device->CreateCommittedResource(&prop, D3D12_HEAP_FLAG_NONE, &bufferDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&buffer));
-				Assert(FAILED(result), __FILE__, __LINE__, system_category().message(result).c_str());
-				m_ConstantBuffer[i].reset(buffer);
-
-				D3D12_GPU_VIRTUAL_ADDRESS address = m_ConstantBuffer[i]->GetGPUVirtualAddress();
-				D3D12_CPU_DESCRIPTOR_HANDLE cpuHandle = m_HeapCBV->GetCPUDescriptorHandleForHeapStart();
-				D3D12_GPU_DESCRIPTOR_HANDLE gpuHandle = m_HeapCBV->GetGPUDescriptorHandleForHeapStart();
-
-				cpuHandle.ptr += static_cast<unsigned long long>(incrSize) * i;
-				gpuHandle.ptr += static_cast<unsigned long long>(incrSize) * i;
-
-				m_ConstantBufferView[i].CPUHandle = cpuHandle;
-				m_ConstantBufferView[i].GPUHandle = gpuHandle;
-				m_ConstantBufferView[i].Desc.BufferLocation = address;
-				m_ConstantBufferView[i].Desc.SizeInBytes = sizeof(TRANSFORM);
-
-				m_Device->CreateConstantBufferView(&m_ConstantBufferView[i].Desc, cpuHandle);
-
-				result = m_ConstantBuffer[i]->Map(0, nullptr, reinterpret_cast<void**>(&m_ConstantBufferView[i].Buffer));
-				Assert(FAILED(result), __FILE__, __LINE__, system_category().message(result).c_str());
-				
-				XMVECTOR eyePos = XMVectorSet(0.0f, 0.0f, 5.0f, 0.0f);
-				XMVECTOR targetPos = XMVectorZero();
-				XMVECTOR upWard = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
-
-				constexpr float fovY = XMConvertToRadians(37.5f);
-				float aspect = static_cast<float>(m_WindowWidth) / static_cast<float>(m_WindowHeight);
-
-				m_ConstantBufferView[i].Buffer->m_World = XMMatrixIdentity();
-				m_ConstantBufferView[i].Buffer->m_View = XMMatrixLookAtRH(eyePos, targetPos, upWard);
-				m_ConstantBufferView[i].Buffer->m_Project = XMMatrixPerspectiveFovRH(fovY, aspect, 1.0f, 1000.0f);
-			}
 		}
 
 		// ルートシグニチャ
@@ -602,7 +448,7 @@ void Graphic::Render() {
 		m_CommandList->RSSetViewports(1, &m_Viewport);
 		m_CommandList->RSSetScissorRects(1, &m_Scissor);
 
-		m_CommandList->DrawIndexedInstanced(m_Octahedron->GetIndexNum(), 1, 0, 0, 0);
+		m_CommandList->DrawIndexedInstanced(m_Octahedron1->GetIndexNum(), 1, 0, 0, 0);
 	}
 
 	barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;

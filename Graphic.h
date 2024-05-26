@@ -18,6 +18,7 @@
 #include <crtdbg.h>
 #endif
 
+#include "Assertion.h"
 #include "RenderObject.h"
 
 #pragma comment(lib, "d3d12.lib")
@@ -30,34 +31,6 @@
 using namespace std;
 using namespace DirectX;
 
-// COMデリータ
-class UComDeleter {
-public:
-	void operator()(IUnknown* ptr) const {
-		if (ptr) { ptr->Release(); }
-	}
-};
-
-// ユニークなCOMポインタ
-template <typename T>
-using unique_com_ptr = unique_ptr<T, UComDeleter>;
-
-// 変換行列
-struct alignas(256) TRANSFORM {
-	XMMATRIX m_World;
-	XMMATRIX m_View;
-	XMMATRIX m_Project;
-};
-
-// 定数バッファービュー
-template <typename T>
-struct D3D12_CONSTANT_BUFFER_VIEW {
-	D3D12_CONSTANT_BUFFER_VIEW_DESC Desc;
-	D3D12_CPU_DESCRIPTOR_HANDLE CPUHandle;
-	D3D12_GPU_DESCRIPTOR_HANDLE GPUHandle;
-	T* Buffer;
-};
-
 // 描画インタフェース
 class Graphic {
 
@@ -67,8 +40,6 @@ private:
 	static unique_ptr<Graphic> m_Instance;
 
 	// 実験用プリミティブ
-	unique_ptr<Hexahedron> m_Hexahedron;
-	unique_ptr<Octahedron> m_Octahedron;
 
 	// ウィンドウ関連
 	HINSTANCE m_InstanceHandle;
@@ -98,14 +69,6 @@ private:
 
 	// バッファ
 	unique_com_ptr<ID3D12Resource> m_RenderTarget[m_FrameCount];
-	unique_com_ptr<ID3D12Resource> m_VertexBuffer;
-	unique_com_ptr<ID3D12Resource> m_IndexBuffer;
-	unique_com_ptr<ID3D12Resource> m_ConstantBuffer[m_FrameCount];
-
-	// バッファビュー
-	D3D12_VERTEX_BUFFER_VIEW m_VertexBufferView;
-	D3D12_INDEX_BUFFER_VIEW m_IndexBufferView;
-	D3D12_CONSTANT_BUFFER_VIEW<TRANSFORM> m_ConstantBufferView[m_FrameCount];
 
 	// ディスクリプタヒープ
 	unique_com_ptr<ID3D12DescriptorHeap> m_HeapRTV;
